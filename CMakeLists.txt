@@ -18,7 +18,7 @@ set(EIGEN_INSTALL_DIR ${CMAKE_SOURCE_DIR}/include/eigen3)
 set(EIGEN_INCLUDE_DIR ${EIGEN_INSTALL_DIR})
 
 set(SOURCES
-    src/main.cpp
+    main.cpp
 )
 
 ExternalProject_Add(
