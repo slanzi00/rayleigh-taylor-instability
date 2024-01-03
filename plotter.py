@@ -34,15 +34,5 @@ with open(file_path, "r") as file:
 fig, ax = plt.subplots()
 animation = FuncAnimation(fig, update, frames=len(matrices), interval=200)
 
-# Ottieni le dimensioni correnti della figura
-current_size = fig.get_size_inches()
-
-# Imposta le nuove dimensioni in percentuale (ad esempio, +20%)
-percent_increase = 20
-new_size = (current_size[0] * (1 + percent_increase / 100), current_size[1] * (1 + percent_increase / 100))
-
-# Imposta le nuove dimensioni
-fig.set_size_inches(new_size)
-
 plt.subplots_adjust(left=0.15, right=0.85, top=0.85, bottom=0.15)
 plt.show()

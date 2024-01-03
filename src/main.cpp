@@ -35,16 +35,7 @@ Eigen::MatrixXd apply_fluxes(Eigen::MatrixXd&,
                              Eigen::MatrixXd const&,
                              double);
 
-void print_matrix(Eigen::MatrixXd const& m)
-{
-  for (uint32_t i{0}; i != ic::n_x; ++i) {
-    for (uint32_t j{0}; j != ic::n_y + 2; ++j) {
-      printf("%12.8e ", m(i, j));
-    }
-    std::cout << '\n';
-  }
-  std::cout << "\n\n";
-}
+void print_matrix(Eigen::MatrixXd const&);
 
 int main()
 {
@@ -52,14 +43,7 @@ int main()
   auto primitives = PrimitiveQuantities{axis};
   auto conserved = get_conserved(primitives);
   double t = 0.;
-
-  // std::cout << conserved.mass << "\n\n"
-  //           << conserved.momentum_x << "\n\n"
-  //           << conserved.momentum_y << "\n\n"
-  //           << conserved.energy << '\n';
-  int i = 0;
   do {
-    ++i;
     primitives = get_primitive(conserved);
     auto dt = get_dt(primitives);
     add_source_term(conserved, dt / 2.);
@@ -139,10 +123,8 @@ int main()
         apply_fluxes(conserved.energy, fluxes_x.energy, fluxes_y.energy, dt);
 
     add_source_term(conserved, dt / 2.);
-
-    if (i % 100 == 0) {
-      print_matrix(primitives.rho);
-    }
+    
+    print_matrix(primitives.rho);
     t += dt;
   } while (t < ic::t_end);
 }
@@ -334,4 +316,15 @@ Eigen::MatrixXd apply_fluxes(Eigen::MatrixXd& f,
   f += dt * ic::dx * flux_f_y_shiftl;
 
   return f;
+}
+
+void print_matrix(Eigen::MatrixXd const& m)
+{
+  for (uint32_t i{0}; i != ic::n_x; ++i) {
+    for (uint32_t j{0}; j != ic::n_y + 2; ++j) {
+      printf("%12.8e ", m(i, j));
+    }
+    std::cout << '\n';
+  }
+  std::cout << "\n\n";
 }
