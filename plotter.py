@@ -23,7 +23,7 @@ matrices = []
 current_matrix = []
 with open(file_path, "r") as file:
     for line in file:
-        if line.strip():  # Ignora le righe vuote
+        if line.strip():
             row = np.fromstring(line.strip(), sep=" ")
             current_matrix.append(row)
         else:
