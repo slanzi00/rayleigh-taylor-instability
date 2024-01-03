@@ -18,60 +18,133 @@ void set_ghost_gradients(MatrixPair&);
 
 MatrixPair get_gradient(Eigen::MatrixXd const&);
 
+SpatialExtrapolated extrapolate_in_space_to_face(Eigen::MatrixXd const&,
+                                                 MatrixPair const&);
+
+ConservedQuantities get_flux(Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&);
+
+Eigen::MatrixXd apply_fluxes(Eigen::MatrixXd&,
+                             Eigen::MatrixXd const&,
+                             Eigen::MatrixXd const&,
+                             double);
+
+void print_matrix(Eigen::MatrixXd const& m)
+{
+  for (uint32_t i{0}; i != ic::n_x; ++i) {
+    for (uint32_t j{0}; j != ic::n_y + 2; ++j) {
+      printf("%12.8e ", m(i, j));
+    }
+    std::cout << '\n';
+  }
+  std::cout << "\n\n";
+}
+
 int main()
 {
   auto axis = Axis{ic::x_lim, ic::y_lim};
   auto primitives = PrimitiveQuantities{axis};
   auto conserved = get_conserved(primitives);
-  primitives = get_primitive(conserved);
-  auto dt = get_dt(primitives);
-  // whilw loop here
-  // add source (half-step)
-  add_source_term(conserved, dt / 2.);
-  primitives = get_primitive(conserved);
-
-  // calculate gradients
-  auto grad_rho = get_gradient(primitives.rho);
-  auto grad_v_x = get_gradient(primitives.v_x);
-  auto grad_v_y = get_gradient(primitives.v_y);
-  auto grad_pressure = get_gradient(primitives.pressure);
-
-  // extrapolate half step in time
-  auto rho_prime =
-      primitives.rho - 0.5 * dt *
-                           (primitives.v_x.cwiseProduct(grad_rho.first) +
-                            primitives.rho.cwiseProduct(grad_v_x.first) +
-                            primitives.v_y.cwiseProduct(grad_rho.second) +
-                            primitives.rho.cwiseProduct(grad_v_y.second));
-
-  auto v_x_prime =
-      primitives.v_x - 0.5 * dt *
-                           (primitives.v_x.cwiseProduct(grad_v_x.first) +
-                            primitives.v_y.cwiseProduct(grad_v_x.second) +
-                            grad_pressure.first.cwiseQuotient(primitives.rho));
-
-  auto v_y_prime =
-      primitives.v_y - 0.5 * dt *
-                           (primitives.v_x.cwiseProduct(grad_v_y.first) +
-                            primitives.v_y.cwiseProduct(grad_v_y.second) +
-                            grad_pressure.second.cwiseQuotient(primitives.rho));
-
-  auto pressure_prime = primitives.pressure -
-                        0.5 * dt *
-                            (ic::gamma * primitives.pressure.cwiseProduct(
-                                             grad_v_x.first + grad_v_y.second) +
-                             primitives.v_x.cwiseProduct(grad_pressure.first) +
-                             primitives.v_y.cwiseProduct(grad_pressure.second));
-
-  // std::cout << primitives.rho << "\n\n"
-  //           << primitives.v_x << "\n\n"
-  //           << primitives.v_y << "\n\n"
-  //           << primitives.pressure << '\n';
+  double t = 0.;
 
   // std::cout << conserved.mass << "\n\n"
   //           << conserved.momentum_x << "\n\n"
   //           << conserved.momentum_y << "\n\n"
   //           << conserved.energy << '\n';
+  int i = 0;
+  do {
+    ++i;
+    primitives = get_primitive(conserved);
+    auto dt = get_dt(primitives);
+    add_source_term(conserved, dt / 2.);
+    primitives = get_primitive(conserved);
+
+    // calculate gradients
+    auto grad_rho = get_gradient(primitives.rho);
+    auto grad_v_x = get_gradient(primitives.v_x);
+    auto grad_v_y = get_gradient(primitives.v_y);
+    auto grad_pressure = get_gradient(primitives.pressure);
+
+    // extrapolate half step in time
+    auto rho_prime =
+        primitives.rho - 0.5 * dt *
+                             (primitives.v_x.cwiseProduct(grad_rho.first) +
+                              primitives.rho.cwiseProduct(grad_v_x.first) +
+                              primitives.v_y.cwiseProduct(grad_rho.second) +
+                              primitives.rho.cwiseProduct(grad_v_y.second));
+
+    auto v_x_prime = primitives.v_x -
+                     0.5 * dt *
+                         (primitives.v_x.cwiseProduct(grad_v_x.first) +
+                          primitives.v_y.cwiseProduct(grad_v_x.second) +
+                          grad_pressure.first.cwiseQuotient(primitives.rho));
+
+    auto v_y_prime = primitives.v_y -
+                     0.5 * dt *
+                         (primitives.v_x.cwiseProduct(grad_v_y.first) +
+                          primitives.v_y.cwiseProduct(grad_v_y.second) +
+                          grad_pressure.second.cwiseQuotient(primitives.rho));
+
+    auto pressure_prime =
+        primitives.pressure -
+        0.5 * dt *
+            (ic::gamma * primitives.pressure.cwiseProduct(grad_v_x.first +
+                                                          grad_v_y.second) +
+             primitives.v_x.cwiseProduct(grad_pressure.first) +
+             primitives.v_y.cwiseProduct(grad_pressure.second));
+
+    SpatialExtrapolated se_rho =
+        extrapolate_in_space_to_face(rho_prime, grad_rho);
+
+    SpatialExtrapolated se_v_x =
+        extrapolate_in_space_to_face(v_x_prime, grad_v_x);
+
+    SpatialExtrapolated se_v_y =
+        extrapolate_in_space_to_face(v_y_prime, grad_v_y);
+
+    SpatialExtrapolated se_pressure =
+        extrapolate_in_space_to_face(pressure_prime, grad_pressure);
+
+    auto fluxes_x = get_flux(se_rho.xl,
+                             se_rho.xr,
+                             se_v_x.xl,
+                             se_v_x.xr,
+                             se_v_y.xl,
+                             se_v_y.xr,
+                             se_pressure.xl,
+                             se_pressure.xr);
+
+    auto fluxes_y = get_flux(se_rho.yl,
+                             se_rho.yr,
+                             se_v_y.yl,
+                             se_v_y.yr,
+                             se_v_x.yl,
+                             se_v_x.yr,
+                             se_pressure.yl,
+                             se_pressure.yr);
+
+    conserved.mass =
+        apply_fluxes(conserved.mass, fluxes_x.mass, fluxes_y.mass, dt);
+    conserved.momentum_x = apply_fluxes(
+        conserved.momentum_x, fluxes_x.momentum_x, fluxes_y.momentum_y, dt);
+    conserved.momentum_y = apply_fluxes(
+        conserved.momentum_y, fluxes_x.momentum_y, fluxes_y.momentum_x, dt);
+    conserved.energy =
+        apply_fluxes(conserved.energy, fluxes_x.energy, fluxes_y.energy, dt);
+
+    add_source_term(conserved, dt / 2.);
+
+    if (i % 100 == 0) {
+      print_matrix(primitives.rho);
+    }
+    t += dt;
+  } while (t < ic::t_end);
 }
 
 ConservedQuantities get_conserved(PrimitiveQuantities const& primitive)
@@ -120,7 +193,7 @@ PrimitiveQuantities get_primitive(ConservedQuantities const& conserved)
 
 double get_dt(PrimitiveQuantities const& primitive)
 {
-  auto fill_m_dt = [&](uint8_t i, uint8_t j) {
+  auto fill_m_dt = [&](uint32_t i, uint32_t j) {
     return ic::dx / (std::sqrt(ic::gamma * primitive.pressure(i, j) /
                                primitive.rho(i, j)) +
                      std::sqrt(primitive.v_x(i, j) * primitive.v_x(i, j) +
@@ -160,4 +233,105 @@ MatrixPair get_gradient(Eigen::MatrixXd const& f)
                                    (first_f_dy - second_f_dy) / (2. * ic::dx));
   set_ghost_gradients(grad);
   return grad;
+}
+
+SpatialExtrapolated extrapolate_in_space_to_face(Eigen::MatrixXd const& f,
+                                                 MatrixPair const& grad_f)
+{
+  auto spatial_extrapolated = SpatialExtrapolated{};
+
+  Eigen::MatrixXd f_xl(ic::n_x, ic::n_y + 2);
+  f_xl << (f - grad_f.first * ic::dx / 2.).bottomRows(ic::n_x - 1),
+      (f - grad_f.first * ic::dx / 2.).topRows(1);
+  spatial_extrapolated.xl = f_xl;
+
+  spatial_extrapolated.xr = f + grad_f.first * ic::dx / 2.;
+
+  Eigen::MatrixXd f_yl(ic::n_x, ic::n_y + 2);
+  f_yl << (f - grad_f.second * ic::dx / 2.).rightCols(ic::n_y + 1),
+      (f - grad_f.second * ic::dx / 2.).leftCols(1);
+  spatial_extrapolated.yl = f_yl;
+
+  spatial_extrapolated.yr = f + grad_f.second * ic::dx / 2.;
+
+  return spatial_extrapolated;
+}
+
+ConservedQuantities get_flux(Eigen::MatrixXd const& rho_l,
+                             Eigen::MatrixXd const& rho_r,
+                             Eigen::MatrixXd const& vx_l,
+                             Eigen::MatrixXd const& vx_r,
+                             Eigen::MatrixXd const& vy_l,
+                             Eigen::MatrixXd const& vy_r,
+                             Eigen::MatrixXd const& p_l,
+                             Eigen::MatrixXd const& p_r)
+{
+  auto fluxes = ConservedQuantities{};
+
+  auto en_l = p_l / (ic::gamma - 1.) +
+              0.5 * rho_l.cwiseProduct(vx_l.cwiseProduct(vx_l) +
+                                       vy_l.cwiseProduct(vy_l));
+
+  auto en_r = p_r / (ic::gamma - 1.) +
+              0.5 * rho_r.cwiseProduct(vx_r.cwiseProduct(vx_r) +
+                                       vy_r.cwiseProduct(vy_r));
+
+  auto rho_star = 0.5 * (rho_l + rho_r);
+
+  auto momx_star = 0.5 * (rho_l.cwiseProduct(vx_l) + rho_r.cwiseProduct(vx_r));
+
+  auto momy_star = 0.5 * (rho_l.cwiseProduct(vy_l) + rho_r.cwiseProduct(vy_r));
+
+  auto en_star = 0.5 * (en_l + en_r);
+
+  auto p_star =
+      (ic::gamma - 1) * (en_star - 0.5 * (momx_star.cwiseProduct(momx_star) +
+                                          momy_star.cwiseProduct(momy_star))
+                                             .cwiseQuotient(rho_star));
+
+  fluxes.mass = momx_star;
+  fluxes.momentum_x =
+      (momx_star.cwiseProduct(momx_star)).cwiseQuotient(rho_star) + p_star;
+  fluxes.momentum_y =
+      (momx_star.cwiseProduct(momy_star)).cwiseQuotient(rho_star);
+  fluxes.energy =
+      ((en_star + p_star).cwiseProduct(momx_star)).cwiseQuotient(rho_star);
+
+  auto c_l =
+      (ic::gamma * (p_l.cwiseQuotient(rho_l))).cwiseSqrt() + vx_l.cwiseAbs();
+
+  auto c_r =
+      (ic::gamma * (p_r.cwiseQuotient(rho_r))).cwiseSqrt() + vx_r.cwiseAbs();
+
+  auto c = c_l.cwiseMax(c_r);
+
+  fluxes.mass -= 0.5 * c.cwiseProduct(rho_l - rho_r);
+  fluxes.momentum_x -=
+      0.5 *
+      c.cwiseProduct((rho_l.cwiseProduct(vx_l) - rho_r.cwiseProduct(vx_r)));
+  fluxes.momentum_y -=
+      0.5 * c.cwiseProduct(rho_l.cwiseProduct(vy_l) - rho_r.cwiseProduct(vy_r));
+  fluxes.energy -= 0.5 * c.cwiseProduct(en_l - en_r);
+
+  return fluxes;
+}
+
+Eigen::MatrixXd apply_fluxes(Eigen::MatrixXd& f,
+                             Eigen::MatrixXd const& flux_f_x,
+                             Eigen::MatrixXd const& flux_f_y,
+                             double dt)
+{
+  f += -dt * ic::dx * flux_f_x;
+
+  Eigen::MatrixXd flux_f_x_shiftl(ic::n_x, ic::n_y + 2);
+  flux_f_x_shiftl << flux_f_x.bottomRows(1), flux_f_x.topRows(ic::n_x - 1);
+  f += dt * ic::dx * flux_f_x_shiftl;
+
+  f += -dt * ic::dx * flux_f_y;
+
+  Eigen::MatrixXd flux_f_y_shiftl(ic::n_x, ic::n_y + 2);
+  flux_f_y_shiftl << flux_f_y.rightCols(1), flux_f_y.leftCols(ic::n_y + 1);
+  f += dt * ic::dx * flux_f_y_shiftl;
+
+  return f;
 }

@@ -9,8 +9,8 @@ using MatrixPair = std::pair<Eigen::MatrixXd, Eigen::MatrixXd>;
 
 struct Axis
 {
-  Eigen::ArrayXf x;
-  Eigen::ArrayXf y;
+  Eigen::ArrayXd x;
+  Eigen::ArrayXd y;
 
   Axis(double, double);
 };
