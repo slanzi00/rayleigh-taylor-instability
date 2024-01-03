@@ -14,7 +14,7 @@ def update(frame):
     plt.imshow(
         matrices[frame],
         cmap="plasma",
-        interpolation="nearest",  # Usa l'interpolazione nearest neighbor
+        interpolation="nearest",
     )
 
 
